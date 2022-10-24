@@ -1,75 +1,74 @@
 #include "reader.h"
 
-int state = GC_READER_STATE_READ_TYPE;
-
-char buff[BUFF_SIZE + 1];
-uint32_t buff_iter = 0;
-
 int is_end_char(char c) {
-    return c == '\0' || c == COMMENT_SYMBOL || c == END_SYMBOL || c == END_SYMBOL2;
+    return c == '\0' || c == END_SYMBOL || c == END_SYMBOL2;
 }
 
-int read_to_buff(char c) {
-    if(buff_iter >= BUFF_SIZE - 1) {
+int is_type_char(char c) {
+    return c == GCODE_SYMBOL || c == MCODE_SYMBOL;
+}
+
+int read_to_buff(char c, gc_reader *reader) {
+    if(reader->buff_iter >= BUFF_SIZE - 1) {
         return 1;
     }
-    buff[buff_iter++] = c;
-    buff[buff_iter] = '\0';
+    reader->buff[reader->buff_iter++] = c;
+    reader->buff[reader->buff_iter] = '\0';
     return 0;
 }
 
-void set_param(uint8_t type, gc_reader *reader) {
-    switch(type) {
+void set_param(gc_reader *reader) {
+    switch(reader->curr_param_type) {
     case 'T':
-        reader->T = atoi(buff);
+        reader->T = atoi(reader->buff);
         break;
     case 'S':
-        reader->S = atoi(buff);
+        reader->S = atoi(reader->buff);
         break;
     case 'P':
-        reader->P = atoi(buff);
+        reader->P = atoi(reader->buff);
         break;
     case 'X':
-        reader->X = atof(buff);
+        reader->X = atof(reader->buff);
         break;
     case 'Y':
-        reader->Y = atof(buff);
+        reader->Y = atof(reader->buff);
         break;
     case 'Z':
-        reader->Z = atof(buff);
+        reader->Z = atof(reader->buff);
         break;
     case 'U':
-        reader->U = atof(buff);
+        reader->U = atof(reader->buff);
         break;
     case 'V':
-        reader->V = atof(buff);
+        reader->V = atof(reader->buff);
         break;
     case 'W':
-        reader->W = atof(buff);
+        reader->W = atof(reader->buff);
         break;
     case 'I':
-        reader->I = atof(buff);
+        reader->I = atof(reader->buff);
         break;
     case 'J':
-        reader->J = atof(buff);
+        reader->J = atof(reader->buff);
         break;
     case 'D':
-        reader->D = atof(buff);
+        reader->D = atof(reader->buff);
         break;
     case 'H':
-        reader->H = atof(buff);
+        reader->H = atof(reader->buff);
         break;
     case 'F':
-        reader->F = atof(buff);
+        reader->F = atof(reader->buff);
         break;
     case 'R':
-        reader->R = atof(buff);
+        reader->R = atof(reader->buff);
         break;
     case 'E':
-        reader->E = atof(buff);
+        reader->E = atof(reader->buff);
         break;
     }
-    buff_iter = 0;
+    reader->buff_iter = 0;
 }
 
 int is_checksum_ok(char *input, gc_reader *reader) {
@@ -81,76 +80,110 @@ int is_checksum_ok(char *input, gc_reader *reader) {
     return cs == reader->checksum;
 }
 
-int read_code(char *input, gc_reader *reader) {
-    uint8_t param_type;
-    int found_checksum = 0;
-    state = GC_READER_STATE_READ_TYPE;
-    if(input[0] == 'N') {
-        state = GC_READER_STATE_READ_LINE_NUMBER;
+int read_code(gc_reader *reader, char input, int *is_done) {
+    if(is_end_char(input)) {
+        *is_done = 1;
+        reader->read_checksum &= 0xff;
+    } else if(input != CHECKSUM_SYMBOL && reader->state != GC_READER_STATE_READ_CHECKSUM) {
+        reader->read_checksum = reader->read_checksum ^ input;
     }
-    for(int i = 0; !is_end_char(input[i]); i++) {
-        if(input[i] == CHECKSUM_SYMBOL) {
-            state = GC_READER_STATE_READ_CHECKSUM;
-            i++;
-        }
-        switch(state) {
+
+    int should_read_checksum_next = 0;
+    if(input == CHECKSUM_SYMBOL) {
+        reader->found_checksum = 1;
+        should_read_checksum_next = 1;
+    }
+
+    if(!*is_done && !should_read_checksum_next) {
+        switch(reader->state) {
         case GC_READER_STATE_READ_TYPE:
-            reader->code_type = input[i];
-            state = GC_READER_STATE_READ_CODE;
+            if(input == LINE_NUMBER_SYMBOL) {
+                reader->state = GC_READER_STATE_READ_LINE_NUMBER;
+                break;
+            } else if(!is_type_char(input)) {
+                return GC_READER_ERROR_TYPE_READ;
+            }
+            reader->code_type = input;
+            reader->state = GC_READER_STATE_READ_CODE;
             break;
         case GC_READER_STATE_READ_CODE:
-            for(; input[i] != SEPARATOR_SYMBOL && !is_end_char(input[i]) && input[i] != CHECKSUM_SYMBOL; i++) {
-                if(read_to_buff(input[i])) {
-                    return GC_READER_ERROR_BUFF_OVERFLOW;
+            if(input == SEPARATOR_SYMBOL) {
+                if(reader->buff_iter > 0) {
+                    reader->code_id = atoi(reader->buff);
+                } else {
+                    return GC_READER_ERROR_CODE_READ;
                 }
+                reader->buff_iter = 0;
+                reader->state = GC_READER_STATE_READ_PARAM_TYPE;
+                break;
             }
-            if(buff_iter <= 0) {
-                return GC_READER_ERROR_CODE_READ;
+            if(read_to_buff(input, reader)) {
+                return GC_READER_ERROR_BUFF_OVERFLOW;
             }
-            reader->code_id = atoi(buff);
-            buff_iter = 0;
-            state = GC_READER_STATE_READ_PARAM;
+            break;
+        case GC_READER_STATE_READ_PARAM_TYPE:
+            reader->curr_param_type = input;
+            reader->state = GC_READER_STATE_READ_PARAM;
             break;
         case GC_READER_STATE_READ_PARAM:
-            param_type = input[i];
-            for(i++; input[i] != SEPARATOR_SYMBOL && !is_end_char(input[i]) && input[i] != CHECKSUM_SYMBOL; i++) {
-                if(read_to_buff(input[i])) {
-                    return GC_READER_ERROR_BUFF_OVERFLOW;
+            if(input == SEPARATOR_SYMBOL) {
+                if(reader->buff_iter > 0) {
+                    set_param(reader);
+                } else {
+                    return GC_READER_ERROR_PARAM_READ;
                 }
+                reader->state = GC_READER_STATE_READ_PARAM_TYPE;
+                break;
             }
-            if(buff_iter <= 0) {
-                return GC_READER_ERROR_PARAM_READ;
+            if(read_to_buff(input, reader)) {
+                return GC_READER_ERROR_BUFF_OVERFLOW;
             }
-            set_param(param_type, reader);
-            break;
-        case GC_READER_STATE_READ_CHECKSUM:
-            for(; input[i] != ' ' && !is_end_char(input[i]); i++) {
-                if(read_to_buff(input[i])) {
-                    return GC_READER_ERROR_BUFF_OVERFLOW;
-                }
-            }
-            reader->checksum = atoi(buff);
-            found_checksum = 1;
-            buff_iter = 0;
             break;
         case GC_READER_STATE_READ_LINE_NUMBER:
-            for(i++; input[i] != ' ' && !is_end_char(input[i]) && input[i] != CHECKSUM_SYMBOL; i++) {
-                if(read_to_buff(input[i])) {
-                    return GC_READER_ERROR_BUFF_OVERFLOW;
-                }
+            if(input == SEPARATOR_SYMBOL) {
+                reader->line_number = atoi(reader->buff);
+                reader->buff_iter = 0;
+                reader->state = GC_READER_STATE_READ_TYPE;
+                break;
             }
-            if(buff_iter <= 0) {
-                return GC_READER_ERROR_LINE_NUMBER_READ;
+            if(read_to_buff(input, reader)) {
+                return GC_READER_ERROR_BUFF_OVERFLOW;
             }
-            reader->line_number = atoi(buff);
-            buff_iter = 0;
-            state = GC_READER_STATE_READ_TYPE;
             break;
-        }
-        if(input[i] == CHECKSUM_SYMBOL) {
-            state = GC_READER_STATE_READ_CHECKSUM;
+        case GC_READER_STATE_READ_CHECKSUM:
+            if(input == SEPARATOR_SYMBOL) {
+                reader->checksum = atoi(reader->buff);
+                reader->buff_iter = 0;
+                reader->state = GC_READER_STATE_IGNORE_INPUT;
+                break;
+            }
+            if(read_to_buff(input, reader)) {
+                return GC_READER_ERROR_BUFF_OVERFLOW;
+            }
+            break;
         }
     }
 
-    return (!found_checksum || is_checksum_ok(input, reader)) ? GC_READER_ERROR_NOT_OCCURED : GC_READER_ERROR_CHECKSUM_ERROR;
+    if((*is_done && reader->buff_iter != 0) || should_read_checksum_next) {
+        switch(reader->state) {
+        case GC_READER_STATE_READ_CODE:
+            reader->code_id = atoi(reader->buff);
+            reader->buff_iter = 0;
+            break;
+        case GC_READER_STATE_READ_PARAM:
+            set_param(reader);
+            break;
+        case GC_READER_STATE_READ_LINE_NUMBER:
+            reader->line_number = atoi(reader->buff);
+            reader->buff_iter = 0;
+            break;
+        case GC_READER_STATE_READ_CHECKSUM:
+            reader->checksum = atoi(reader->buff);
+            reader->buff_iter = 0;
+            break;
+        }
+        reader->state = !should_read_checksum_next ? GC_READER_STATE_READ_TYPE : GC_READER_STATE_READ_CHECKSUM;
+    }
+
+    return GC_READER_ERROR_NOT_OCCURED;
 }
