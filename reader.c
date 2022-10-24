@@ -180,6 +180,9 @@ int read_code(gc_reader *reader, char input, int *is_done) {
         case GC_READER_STATE_READ_CHECKSUM:
             reader->checksum = atoi(reader->buff);
             reader->buff_iter = 0;
+            reader->state = GC_READER_STATE_IGNORE_INPUT;
+            
+            return GC_READER_ERROR_NOT_OCCURED;
             break;
         }
         reader->state = !should_read_checksum_next ? GC_READER_STATE_READ_TYPE : GC_READER_STATE_READ_CHECKSUM;
