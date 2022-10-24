@@ -3,7 +3,15 @@
 
 #include <stdint.h>
 
+#define BUFF_SIZE 20
+
 typedef struct gc_reader {
+    uint8_t state;
+    uint8_t buff[BUFF_SIZE];
+    uint32_t buff_iter;
+    uint8_t curr_param_type;
+    uint8_t found_checksum;
+
     uint8_t code_type;
     uint32_t code_id;
     
@@ -29,6 +37,7 @@ typedef struct gc_reader {
 
     uint32_t line_number;
     uint32_t checksum;
+    uint32_t read_checksum;
 } gc_reader;
 
 #endif
