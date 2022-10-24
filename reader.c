@@ -81,12 +81,16 @@ int is_checksum_ok(char *input, gc_reader *reader) {
 }
 
 int read_code(gc_reader *reader, char input, int *is_done) {
+    if(input == COMMENT_SYMBOL) {
+        reader->state = GC_READER_STATE_IGNORE_INPUT;
+    }
     if(is_end_char(input)) {
         *is_done = 1;
         reader->read_checksum &= 0xff;
     } else if(input != CHECKSUM_SYMBOL && reader->state != GC_READER_STATE_READ_CHECKSUM) {
         reader->read_checksum = reader->read_checksum ^ input;
     }
+    
 
     int should_read_checksum_next = 0;
     if(input == CHECKSUM_SYMBOL) {

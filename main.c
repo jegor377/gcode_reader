@@ -15,14 +15,14 @@ int read_gcode(char input, gc_reader *reader, int *iter) {
         (*iter)++;
     }
     if(done) {
-        printf("%c %d -> X=%f Y=%f S=%d rc=%d c=%d fc=%d\n", reader->code_type, reader->code_id, reader->X, reader->Y, reader->S, reader->read_checksum, reader->checksum, reader->found_checksum);
+        printf("%c %d -> X=%f Y=%f Z=%f E=%f S=%d F=%f rc=%d c=%d fc=%d\n", reader->code_type, reader->code_id, reader->X, reader->Y, reader->Z, reader->E, reader->S, reader->F, reader->read_checksum, reader->checksum, reader->found_checksum);
         memset(reader, 0, sizeof(gc_reader));
     }
     return 0;
 }
 
 int main(void) {
-    FILE *fd = fopen("examples/example2.gcode", "r");
+    FILE *fd = fopen("examples/example_n.gcode", "r");
     if(!fd) {
         printf("Nie mozna otworzyc pliku :(\n");
         return 1;

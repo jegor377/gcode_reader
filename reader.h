@@ -9,6 +9,7 @@
 #define CHECKSUM_SYMBOL '*'
 #define END_SYMBOL '\n'
 #define END_SYMBOL2 '\r'
+#define COMMENT_SYMBOL ';'
 #define LINE_NUMBER_SYMBOL 'N'
 #define GCODE_SYMBOL 'G'
 #define MCODE_SYMBOL 'M'
